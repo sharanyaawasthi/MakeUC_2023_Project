@@ -1,0 +1,240 @@
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
+#include <LiquidCrystal.h>
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+#include <AFMotor.h>
+
+AF_DCMotor motor1(1);
+AF_DCMotor motor2(2);
+
+int light = A0;
+int fog = A1;
+int altitude = A2;
+int rainfall = A3;
+
+int led = 24;
+
+boolean push_buttonF = 0;
+boolean push_buttonR = 0;
+boolean push_buttonL =0;
+
+RF24 radio(22, 23);
+const byte address[6] = "00001";
+
+const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+
+Adafruit_MPU6050 mpu;
+
+// motor one
+int enA = 10;
+int in1 = 9;
+int in2 = 8;
+// motor two
+int enB = 13;
+int in3 = 7;
+int in4 = 6;
+
+// accelerometer one
+int scl = 11;
+int sda = 12;
+
+void setup() {
+  // put your setup code here, to run once:
+  pinMode(3, OUTPUT);
+  pinMode(A0, INPUT);
+  Serial.begin(115200);
+  pinMode(2, OUTPUT);
+  pinMode(4, OUTPUT);
+  pinMode(A3, INPUT);
+  pinMode(A0, INPUT);
+  pinMode(A1, INPUT);
+  pinMode(13, OUTPUT);
+  lcd.begin(16,2);
+  
+
+   if (!mpu.begin()) {
+    Serial.println("Failed to find MPU6050 chip");
+    while (1) {
+      delay(10);
+    }
+  }
+  Serial.println("MPU6050 Found!");
+
+  // set accelerometer range to +-8G
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+
+  // set gyro range to +- 500 deg/s
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+
+  // set filter bandwidth to 21 Hz
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+
+  delay(100);
+
+  motor1.setSpeed(200);
+motor2.setSpeed(200);
+
+Serial.begin(9600); 
+radio.begin(); 
+radio.openReadingPipe(0, address); 
+radio.setPALevel(RF24_PA_MIN); 
+radio.startListening(); 
+
+pinMode(light, INPUT);
+pinMode(fog, INPUT);
+pinMode(altitude, INPUT);
+pinMode(rainfall, INPUT);
+}
+
+void loop() {
+    int level=analogRead(A0);
+  int motion=digitalRead(6);
+  lcd.clear();
+  Serial.println(motion);
+  delay(500);
+if (level>520){
+  lcd.print("Refueled");
+}
+if (level < 300){
+  lcd.print("Fuel Theft");
+  lcd.setCursor(0, 1);
+  // print the number of seconds since reset:
+  lcd.print("Detected");
+}
+if (level>400 and level <500){
+  lcd.print("Normal Day");
+  lcd.setCursor(0,1);
+  lcd.print("In Ohio");
+}
+
+int ldr=analogRead(A0);
+digitalWrite(3, HIGH);
+int rain=analogRead(A3);
+//Serial.println(ldr);
+//delay(500);
+
+ /* Get new sensor events with the readings */
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  /* Print out the values */
+  Serial.print("Acceleration X: ");
+  Serial.print(a.acceleration.x);
+  Serial.println("");
+  delay(500);
+  if (a.acceleration.x >2 and ldr<10){
+    digitalWrite(4, HIGH);
+    digitalWrite(2, HIGH);
+  }
+    else if (a.acceleration.x >2 and ldr>12) {
+      digitalWrite(4, LOW);
+      digitalWrite(3, LOW);
+    }
+  else {
+    digitalWrite(4, HIGH);
+    digitalWrite(2, LOW);
+  }
+  if (a.acceleration.x <-2 and ldr<10){
+    digitalWrite(4, HIGH);
+    digitalWrite(2, HIGH);
+  }
+    else if (a.acceleration.x >2 and ldr>12) {
+      digitalWrite(4, LOW);
+      digitalWrite(3, LOW);
+    }
+  else {
+    digitalWrite(4, HIGH);
+    digitalWrite(2, LOW);
+  }
+if (a.acceleration.x >1 && ldr <15 && rain < 200){
+digitalWrite(4, HIGH);
+digitalWrite(2, HIGH);
+  }
+  else {
+    digitalWrite(4, LOW);
+    digitalWrite(2, HIGH);
+  }
+  if (radio.available()) 
+{
+char text[32] = "";
+radio.read(&text, sizeof(text));
+radio.read(&push_buttonF, sizeof(push_buttonF));
+radio.read(&push_buttonR, sizeof(push_buttonR));
+radio.read(&push_buttonL, sizeof(push_buttonL));
+
+while (push_buttonF == 1) 
+{
+motor1.run(FORWARD);
+motor2.run(FORWARD); 
+Serial.println("forward");  
+}
+
+while (push_buttonR == 1) 
+{
+motor1.run(BACKWARD);
+motor2.run(FORWARD); 
+Serial.println("right"); 
+}
+
+while (push_buttonL == 1) 
+{
+motor1.run(FORWARD);
+motor2.run(BACKWARD); 
+Serial.println("left"); 
+}
+}
+
+//---------------------------------------------------------------------------
+/*
+Remote control
+
+Working Program
+*/
+//---------------------------------------------------------------------------
+
+
+
+if (light < 200)
+{
+  digitalWrite(led, HIGH);
+}
+
+if (altitude > 200 and fog > 200 and rainfall < 100) //increasing altitude, no rain, no fog.
+{
+  digitalWrite(led, HIGH);
+}
+
+else if (altitude > 200 and fog < 200 and rainfall < 100) //increasing altitude, fog, no rain.
+{
+  digitalWrite(led, LOW);
+}
+
+else if (altitude > 200 and fog < 200 and rainfall > 100) // increasing altitude, fog, rain.
+{
+  digitalWrite(led, LOW);
+}
+
+else if (altitude < 200 and fog > 200 and rainfall > 100) //no high altitude, no fog, rain.
+{
+  digitalWrite(led, LOW);
+}
+
+else if (altitude < 200 and fog < 200 and rainfall < 100) //no high altitude, fog, no rain.
+{
+  digitalWrite(led, LOW);
+}
+
+else if (altitude < 200 and fog < 200 and rainfall < 100) //no high altitude, fog, rain.
+{
+  digitalWrite(led, LOW);
+}
+
+
+
+//---------------------------------------------------------------------------
+
+}
